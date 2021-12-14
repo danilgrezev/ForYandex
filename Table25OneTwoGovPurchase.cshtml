@@ -1,0 +1,496 @@
+@model Ugf.GovPrograms.Web.Models.TabsGp.Table4.GovPurchaseWindowModel
+@using Ugf.GovPrograms.Web.Models.TabsGp.Table4
+@using Newtonsoft.Json
+@using Kendo.Mvc.UI
+
+<script type="text/javascript" src="@Url.Content("/Scripts/ugf.kendo.js")"></script>
+<script type="text/javascript" src="@Url.Content("/Scripts/ugf.main.js")"></script>
+<script type="text/javascript" src="@Url.Content("/Scripts/CKEditor/ckeditor.js")"></script>
+
+<div id="windowAddContractProducts">
+    <div id="GridContractProducts"></div>
+    <script type="text/x-kendo-template" id="toolBarTemplate">
+        <div class="toolbar">
+             <button class="sa-manage-b" type="button" value="Добавить" onclick="onAddContractProducts();" ><i class="la la-plus sa-icon"></i>Добавить</button>
+             <button class="sa-manage-b" type="button" value="Период" onclick="selectingPeriod();" ><i class="la la-calendar sa-icon"></i>Выбрать период</button>
+        </div>
+    </script>
+</div>
+<div id="windowSelectingPeriod" style="display:none">
+    <table>
+        <tr>
+            <td>
+                <input id="inputStartValPeriod" />
+            </td>
+            <td>
+                <input id="inputEndValPeriod" />
+            </td>
+        </tr>
+    </table>
+    <div class="buttonArea">
+        <button class="sa-manage-b" type="button" value="Применить" onclick="saveAndRefresh();">Применить</button>
+        <button class="sa-manage-b" type="button" value="Очистить" onclick="clearFields();">Очистить</button>
+    </div>
+</div>
+
+<input id="inputPlanName" type="hidden" value="@Model.PlanName"/>
+<input id="inputPlanVersionId" type="hidden" value="@Model.PlanId" />
+
+<script>
+
+    function onAddGovPurchaseRow() {
+        if ($("#inputPlanName").val() == "") {
+            alert("Необходимо выбрать версию плана!");
+        }
+        else {
+            var window = $("#windowAddContractProducts");
+            getGovPurchaseGrid();
+
+
+            function onCloseGovPurchase() {
+                $("#grid").data("kendoGrid").dataSource.read();
+            };
+            window.kendoWindow({
+                width: "1300px",
+                height: "700px",
+                title: "Форма добавления продукта контракта",
+                visible: false,
+                modal: true,
+                actions: [
+                    "Close"
+                ],
+                close: onCloseGovPurchase
+            }).data("kendoWindow").center().open();
+        }
+    }
+
+    function getGovPurchaseGrid() {
+        var treeElId = "@Model.TreeElId";
+
+        $("#GridContractProducts").kendoGrid({
+            dataSource: {
+                type: "GET",
+                transport: {
+                    read: function (options) {
+                        var planVersionId = $("#inputPlanVersionId").val();
+                        var inputStartValPeriod = $("#inputStartValPeriod").val();
+                        var inputEndValPeriod = $("#inputEndValPeriod").val();
+                        var inputPage = options.data.page;
+                        var inputPageSize = options.data.pageSize;
+                        var filter = options.data.filter;
+                        var sortItem = options.data.sort;
+                        if (options.data.filter) {
+                            filter = options.data.filter.filters;
+                            for (var i = 0; i < filter.length; i++) {
+                                if (filter[i].field == "ContractDate") {
+                                    var outputDate = new Date(Date.parse(filter[i].value) + currentTimeZoneOffsetInHours).toISOString();
+                                    filter[i].value = outputDate;
+                                }
+                                else if (filter[i].field == "PlannedStartDateOfContract") {
+                                    var outputDate = new Date(Date.parse(filter[i].value) + currentTimeZoneOffsetInHours).toISOString();
+                                    filter[i].value = outputDate;
+                                }
+                                else if (filter[i].field == "PlannedCompletionDateOfContract") {
+                                    var outputDate = new Date(Date.parse(filter[i].value) + currentTimeZoneOffsetInHours).toISOString();
+                                    filter[i].value = outputDate;
+                                }
+                            }
+                        }
+                        if (options.data.sort) {
+                            sortItem = options.data.sort;
+                        }
+
+                        $.ajax({
+                            url: "@Url.Action("Table25OneTwoGovPurchase", "DataInput")",
+                            data: {
+                                inputTreeElId: treeElId,
+                                inputPlanVersionId: planVersionId,
+                                inputPage: JSON.stringify(inputPage),
+                                inputPageSize: JSON.stringify(inputPageSize),
+                                inputFilters: JSON.stringify(filter),
+                                inputSort: JSON.stringify(sortItem),
+                                inputStartValPeriod: inputStartValPeriod,
+                                inputEndValPeriod: inputEndValPeriod
+                            },
+                            success: function (result) {
+                                if (result["error"] != "") {
+                                    alert(result["error"]);
+                                }
+                                options.success(result);
+                            },
+                            error: function (result) {
+                                if (result["error"] != "") {
+                                    alert('Произошла непредвиденная ошибка! ' + result["error"]);
+                                }
+                                options.error(result);
+                            },
+                        });
+                    }
+                },
+                pageSize: 50,
+                serverPaging: true,
+                serverFiltering: true,
+                schema: {
+                    total: "total",
+                    data: "data",
+                    model: {
+                        fields: {
+                            Id: {
+                                type: "string"
+                            },
+                            ContractId: {
+                                type: "string"
+                            },
+                            SimpleAtionId: {
+                                type: "string"
+                            },
+                            KBKId: {
+                                type: "string"
+                            },
+                            Number: {
+                                type: "string"
+                            },
+                            Price: {
+                                type: "number"
+                            },
+                            ProductPrice: {
+                                type: "number"
+                            },
+                            ProductName: {
+                                type: "string"
+                            },
+                            OKEI: {
+                                type: "string"
+                            },
+                            CountryCode: {
+                                type: "string"
+                            },
+                            CountryName: {
+                                type: "string"
+                            },
+                            IsInnovative: {
+                                type: "boolean"
+                            },
+                            KBK: {
+                                type: "string"
+                            },
+                            CodeOKPD: {
+                                type: "string"
+                            },
+                            ContractDate: {
+                                type: "date"
+                            },
+                            PlannedStartDateOfContract: {
+                                type: "date"
+                            },
+                            PlannedCompletionDateOfContract: {
+                                type: "date"
+                            },
+                            CustomerName: {
+                                type: "string"
+                            },
+                            SupplierName: {
+                                type: "string"
+                            },
+                            ContractStatus: {
+                                type: "string"
+                            },
+                            Currency: {
+                                type: "string"
+                            },
+                            PrevYearFin: {
+                                type: "number"
+                            }
+                        }
+                    }
+                },
+
+            },
+            pageable: {
+                pageSizes: [50],
+                refresh: true
+            },
+            filterable: {
+                extra: false,
+                messages: {
+                    info: "Показать строки со значением:",
+                    filter: "Применить",
+                    clear: "Очистить"
+                },
+                operators: {
+                    string: {
+                        eq: "Содержит",
+                        neq: "Не содержит"
+                    },
+                    number: {
+                        eq: "Равно",
+                        neq: "Не равно",
+                        gt: "Больше",
+                        gte: "Больше или равно",
+                        lt: "Меньше",
+                        lte: "Меньше или равно"
+                    },
+                    date: {
+                        eq: "Равно",
+                        gt: "Больше",
+                        gte: "Больше или равно",
+                        lt: "Меньше",
+                        lte: "Меньше или равно"
+                    },
+                    bool: {
+                        eq: "Инновационная",
+                        neq: "Не инновационная"
+                    }
+                }
+            },
+            sortable: true,
+            scrollable: true,
+            dataBound: addHorizontaScrollGovPurchase,
+            height: 670,
+            toolbar: kendo.template($("#toolBarTemplate").html()),
+            columns: [
+                {
+                    field: "Id", hidden: true
+                },
+                {
+                    field: "ContractId", hidden: true
+                },
+                {
+                    field: "SimpleAtionId", hidden: true
+                },
+                {
+                    field: "KBKId", hidden: true
+                },
+                {
+                    field: "PrevYearFin", hidden: true
+                },
+                {
+                    field: "CountryCode", hidden: true
+                },
+                {
+                    title: " ", template: '<input data-issaved="#= IsSaved ? 1:0 #" type="checkbox" id="#=Id#" class="chkbx k-checkbox"/>',
+                    width: 30, editable: false, filterable: false, sortable: false,
+                    headerTemplate: "<input type='checkbox' id='select_all' class='k-checkbox'>"
+                },
+                {
+                    field: "Number", title: "Номер контракта", template: "#= Number != \"\" ? Number : '' #", width: 250, editable: false
+                },
+                {
+                    field: "Price", title: "Цена контракта (тыс. руб.)", format: "{0:N}", width: 200, editable: false
+                },
+                {
+                    field: "ProductPrice", title: "Цена товара (тыс. руб.)", format: "{0:N}", width: 200, editable: false
+                },
+                {
+                    field: "ProductName", title: "Наименование товара", width: 200, editable: false
+                },
+                {
+                    field: "OKEI", title: "Единица измерения", width: 150, editable: false
+                },
+                {
+                    field: "CountryName", title: "Страна происхождения товара", width: 200, editable: false
+                },
+                {
+                    field: "IsInnovative", title: "Инновационная продукция", template: "#= IsInnovative == null ?  'X' : (IsInnovative == true ? 'Да':'Нет') #", width: 200, editable: false
+                },
+                {
+                    field: "KBK", title: "КБК", width: 200, editable: false
+                },
+                {
+                    field: "CodeOKPD", title: "ОКПД", width: 200, editable: false
+                },
+                {
+                    field: "ContractDate", title: "Дата заключения контракта", template: "#= kendo.toString(kendo.parseDate(ContractDate), 'dd.MM.yyyy') != '31.12.1899' && kendo.toString(kendo.parseDate(ContractDate), 'dd.MM.yyyy') != '01.01.1900' ?  kendo.toString(kendo.parseDate(ContractDate), 'dd.MM.yyyy') : ''#", width: 150, editable: false
+                },
+                {
+                    field: "PlannedStartDateOfContract", title: "Плановая дата начала исполнения контракта", template: "#= kendo.toString(kendo.parseDate(PlannedStartDateOfContract), 'dd.MM.yyyy') != '31.12.1899' && kendo.toString(kendo.parseDate(PlannedStartDateOfContract), 'dd.MM.yyyy') != '01.01.1900' ? kendo.toString(kendo.parseDate(PlannedStartDateOfContract), 'dd.MM.yyyy'): '' #", width: 150, editable: false
+                },
+                {
+                    field: "PlannedCompletionDateOfContract", title: "Плановая дата окончания исполнения контракта", template: "#= kendo.toString(kendo.parseDate(PlannedCompletionDateOfContract), 'dd.MM.yyyy')!= '31.12.1899' && kendo.toString(kendo.parseDate(PlannedCompletionDateOfContract), 'dd.MM.yyyy') != '01.01.1900' ? kendo.toString(kendo.parseDate(PlannedCompletionDateOfContract), 'dd.MM.yyyy') : '' #", width: 150, editable: false
+                },
+                {
+                    field: "CustomerName", title: "Заказчик", width: 250, editable: false
+                },
+                {
+                    field: "SupplierName", title: "Поставщик", width: 150, editable: false
+                },
+                {
+                    field: "ContractStatus", title: "Статус контракта", width: 150, editable: false
+                },
+                {
+                    field: "Currency", title: "Валюта", width: 150, editable: false
+                }
+            ]
+        });
+
+
+        $('#select_all').click(function () {
+            var t = $("#GridContractProducts");
+            if ($(this).prop('checked') == true) {
+                t.find('.chkbx').each(function () {
+                    this.checked = true;
+                });
+            } else {
+
+                t.find('.chkbx').each(function () {
+                    this.checked = false;
+                });
+            }
+        });
+    }
+
+    function openNewWindow(url) {
+        window.open(url);
+    }
+
+    function onRemoveGovPurchase(e) {
+        return {
+            id: e.models[0].Id
+        }
+
+    }
+
+    function addHorizontaScrollGovPurchase(e) {
+        if (this.dataSource.view().length == 0) {
+            var colspan = this.thead.find("th").length - 2;
+            var emptyRow = "<tr><td colspan='" + colspan + "'></td></tr>";
+            this.tbody.html(emptyRow);
+            this.table.width(1100);
+        }
+
+        this.element.find("[data-issaved='1']").parent().parent().css("background", "#E5EFFF");
+    }
+
+    function selectingPeriod() {
+        var window = $("#windowSelectingPeriod");
+        window.show();
+        function onClose() {
+            window.hide();
+        };
+
+        window.kendoWindow({
+            width: "320px",
+            height: "85px",
+            title: "Выберите период",
+            visible: false,
+            modal: true,
+            actions: [
+                "Close"
+            ],
+            close: onClose
+        }).data("kendoWindow").center().open();
+    }
+
+    function saveAndRefresh() {
+        var window = $("#windowSelectingPeriod");
+        $("#GridContractProducts").data("kendoGrid").dataSource.read();
+        window.kendoWindow().data("kendoWindow").close();
+        window.hide();
+    }
+    function clearFields() {
+        $("#inputStartValPeriod").val("");
+        $("#inputEndValPeriod").val("");
+    }
+
+    $(document).ready(function () {
+        $(".k-grid-AddContractProductsFromGovPurchase").click(function () {
+            onAddGovPurchaseRow();
+        });
+
+        $("#inputStartValPeriod").kendoDatePicker({
+            dateInput: true
+        });
+        $("#inputEndValPeriod").kendoDatePicker({
+            dateInput: true
+        });
+    });
+
+    function onAddContractProducts() {
+        var treeElId = "@Model.TreeElId";
+        var planVersionId = $("#inputPlanVersionId").val();
+
+        var products = [];
+        let toAdd = [];
+        const grid = $('#GridContractProducts').data("kendoGrid");
+        $('#GridContractProducts').find("input.chkbx:checked").each(function () {
+            const item = grid.dataItem($(this).parent().parent());
+            toAdd.push(item);
+        });
+        if (toAdd.length == 0) {
+            alert('Необходимо выбрать предмет контракта');
+            return;
+        }
+        for (let i = 0; i < toAdd.length; i++) {
+            const addItem = toAdd[i];
+            var item = {
+                SimpleAtionId: addItem.SimpleAtionId,
+                Id: addItem.Id,
+                KBKId: addItem.KBKId,
+                ProductName: addItem.ProductName,
+                CountryCode: addItem.CountryCode,
+                CountryName: addItem.CountryName,
+                IsInnovative: addItem.IsInnovative,
+                PrevYearFin: addItem.PrevYearFin
+            };
+            products.push(item);
+        }
+
+        $.ajax({
+            type: "POST",
+            url: "@Url.Action("Table25OneTwoGovPurchase", "DataInput")",
+            data: {
+                contractProductsList: JSON.stringify(products),
+                inputTreeElId: treeElId,
+                inputPlanVersionId: planVersionId
+            },
+            success: function (obj) {
+                if (obj["info"] != "") {
+                    alert(obj["info"]);
+                }
+                else {
+                    alert("Продукты контракта успешно добавлены!");
+                }
+            },
+            error: function () {
+                alert('Произошла ошибка при добавлении!');
+            }
+        });
+    }
+</script>
+<style>
+    #contentGridForm {
+        margin-top: 15px;
+    }
+
+    .k-grid-toolbar, .k-grid-header, .k-grid-pager {
+        visibility: inherit;
+    }
+
+    .buttonArea {
+        margin-left: 55px;
+    }
+
+    input {
+        border: 2px solid #ebebeb;
+        border-radius: 3px;
+    }
+
+    #toolbarForm {
+        width: 95%;
+        border-radius: 3px;
+        margin-left: 20px;
+        margin-top: 20px;
+    }
+
+    #inputForm {
+        margin-top: 10px;
+        border: 1px solid #f3f3f3;
+        border-radius: 3px;
+        background-color: #f3f3f3;
+    }
+
+    #gridTools {
+        margin: 10px 10px 10px 10px;
+        background-color: #f3f3f3;
+    }
+</style>
