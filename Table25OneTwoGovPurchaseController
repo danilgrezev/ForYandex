@@ -1,0 +1,227 @@
+using Kendo.Mvc.Extensions;
+using Microsoft.AspNetCore.Mvc;
+using Minec.Core.GovPrograms.Common.Legacy;
+using Minec.GovPrograms.DAL.Context;
+using Minec.GovPrograms.DAL.Legacy.GpEntities;
+using Nfbr.Web.Extension.Controllers;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Minec.Core.GovPrograms.BL.DataImport.ImportFropmGovPurchase;
+using Minec.Core.GovPrograms.BL.DataImport.ImportFropmGovPurchase.Models;
+using Newtonsoft.Json;
+using Minec.Core.GovPrograms.DAL.Main.Context;
+using Minec.Core.LegacyControllers.BL;
+using Microsoft.Extensions.Logging;
+using Minec.GovPrograms.Common;
+
+namespace Ugf.GovPrograms.Web.Controllers.DataInput
+{
+    public class Table25OneTwoGovPurchaseController : ActionlessController
+    {
+        private readonly ContractImportService contractService;
+        private readonly IPilotDbContext _ctx;
+
+        public Table25OneTwoGovPurchaseController(
+            ContractImportService contractService,
+            IPilotDbContext ctx,
+            RightsRepository rightsRepository,
+            NfbrMembership nfbrMembership)
+            : base(rightsRepository, nfbrMembership)
+        {
+            this.contractService = contractService;
+            _ctx = ctx;
+        }
+
+        [HttpGet]
+        public ActionResult Execute(
+            string inputTreeElId,
+            string inputPlanVersionId,
+            string inputPage,
+            string inputPageSize,
+            string inputFilters,
+            string inputSort,
+            string inputStartValPeriod,
+            string inputEndValPeriod)
+        {
+            try
+            {
+
+                IQueryable<ContractModel> contractProducts;
+                if (inputTreeElId == "")
+                {
+                    return Json(new { error = "При попытке получения контрактов произошла ошибка." });
+                }
+                Guid planId;
+                if (!Guid.TryParse(inputPlanVersionId, out planId))
+                {
+                    return Json(new { error = "При попытке получения версии плана произошла ошибка." });
+                }
+                Guid subProgramActId;
+                if (!Guid.TryParse(inputTreeElId, out subProgramActId))
+                {
+                    return Json(new { error = "При попытке получения контрактов произошла ошибка." });
+                }
+
+                Dictionary<string, JsonFilterModel> filtersArr = new Dictionary<string, JsonFilterModel>();
+                List<JsonFilterModel> allFilters = new List<JsonFilterModel>();
+                List<JsonSortModel> allSorts = new List<JsonSortModel>();
+                if (inputFilters != null && inputFilters != "null")
+                {
+                    string transformedInputFilters = inputFilters.Replace("operator", "operators");
+                    allFilters = JsonConvert.DeserializeObject<List<JsonFilterModel>>(transformedInputFilters);
+                    foreach (var el in allFilters)
+                    {
+                        filtersArr.Add(el.field, new JsonFilterModel() { field = el.field, value = el.value, operators = el.operators });
+                    }
+                }
+
+                if (inputSort != null && inputSort != "null")
+                {
+                    allSorts = JsonConvert.DeserializeObject<List<JsonSortModel>>(inputSort);
+                }
+
+                DateTime startValPeriod = new DateTime(1900, 01, 01);
+                DateTime endValPeriod = new DateTime(1900, 01, 01);
+                DateTime.TryParse(inputStartValPeriod, out startValPeriod);
+                DateTime.TryParse(inputEndValPeriod, out endValPeriod);
+
+                int pageSize = 0;
+                int page = 0;
+                int.TryParse(inputPageSize, out pageSize);
+                int.TryParse(inputPage, out page);
+                int top = pageSize;
+                int skip = (page - 1) * top;
+
+                // Duplicate requests
+                var planSubProgramId = _ctx.PlanSubprogramActions.SingleOrDefault(x => x.PlanSubprogram.PlanId == planId && x.OriginalSubprogActId == subProgramActId)?.Id;
+                if (planSubProgramId == null) return Json(new { error = "Нет основного мероприятия в плане реализации" });
+                var planSimpleAct = _ctx.PlanSimpleActions.Where(x => x.PlanSubprogramActionId == planSubProgramId).ToList();
+                if (!planSimpleAct.Any()) return Json(new { error = "Нет плана мероприятия" }); 
+                var planSimpleActKbkFins = planSimpleAct.SelectMany(x => x.PlanSimpleActKbkFins).ToList();
+                if (!planSimpleActKbkFins.Any()) return Json(new { error = "Нет финансирования планового мероприятия КБК" }); ;
+
+                var contractProductsCount = contractService.GetContractProductsCount(subProgramActId, planId, filtersArr, startValPeriod, endValPeriod);
+                contractProducts = contractService.GetContractProducts(subProgramActId, planId, filtersArr, allSorts, pageSize, skip, startValPeriod, endValPeriod);
+
+                if (contractProducts.Any())
+                {
+                    var warningMessage = "";
+                    var contractProductsWithoutOKPDs = contractProducts.Where(x => x.IsInnovative == null);
+                    foreach (var cpOKPD in contractProductsWithoutOKPDs)
+                    {
+                        warningMessage += "ОКПД - \"" + cpOKPD.CodeOKPD + "\" не существует в справочнике ОКПД " + Environment.NewLine;
+                    }
+
+                    var data = contractProducts.ToList();
+
+                    var ids = data.Select(o => o.Id).ToArray();
+                    var savedIds = _ctx.SubprogramActionKbkSimpleActions
+                        .Where(o => ids.Contains(o.Id)).Select(o => o.Id).ToList();
+                    foreach (var dt in data)
+                    {
+                        if (savedIds.Contains(dt.Id))
+                        {
+                            dt.IsSaved = true;
+                        }
+                    }
+
+                    return Json(new { total = contractProductsCount, data = data, error = warningMessage });
+                }
+                else
+                {
+                    return Json(new { error = "Нет контрактов для соответсвующего ОМ" });
+                }
+
+            }
+            catch (Exception ex)
+            {
+                return Json(new { error = "При попытке получения контрактов произошла ошибка - " + ex.Message });
+            }
+        }
+
+        [HttpPost]
+        public ActionResult Execute(string contractProductsList, string inputTreeElId, string inputPlanVersionId)
+        {
+            Guid subProgramActId = new Guid();
+            var isValidId = Guid.TryParse(inputTreeElId, out subProgramActId);
+            if (inputTreeElId == "" && !isValidId)
+            {
+                return Json(new { info = "При попытке получения идентификатора ОМ произошла ошибка." });
+            }
+            Guid planId;
+            if (!Guid.TryParse(inputPlanVersionId, out planId))
+            {
+                return Json(new { info = "При попытке получения версии плана произошла ошибка." });
+            }
+            var subprogramAction = contractService.GetSubprogramActionById(subProgramActId);
+            if (subprogramAction == null)
+            {
+                return Json(new { info = "При попытке получения данных о ОМ произошла ошибка." });
+            }
+            try
+            {
+                List<SubprogramActionKbkSimpleAction> resultList = new List<SubprogramActionKbkSimpleAction>();
+                if (contractProductsList != null)
+                {
+                    var contractProductItemsList = JsonConvert.DeserializeObject<List<ContractModel>>(contractProductsList);
+                    if (contractProductItemsList.Any())
+                    {
+                        string message = "";
+                        foreach (var item in contractProductItemsList)
+                        {
+                            if (contractService.AlreadyExistSubprogramActionKbkSimpleActions(item.Id)) continue;
+
+                            var kbk = contractService.GetKBKById(item.KBKId);
+                            if (kbk == null) continue;
+
+                            bool isImportedGoodsServices = false;
+                            if (item.CountryCode != "" && item.CountryCode != "000" && item.CountryCode != "643")
+                            {
+                                isImportedGoodsServices = true;
+                            }
+
+                            var subprogramActionKbkSimpleAction = new SubprogramActionKbkSimpleAction
+                            {
+                                Id = item.Id,
+                                SubprogramActionId = subprogramAction.Id,
+                                KBKId = kbk.Id,
+                                SimpleActionId = item.SimpleAtionId,
+                                IsImportedGoodsServices = isImportedGoodsServices,
+                                IsInnovativeProducts = item.IsInnovative,
+                                Product = item.ProductName,
+                                PrevYearFin = item.PrevYearFin,
+                                Country = item.CountryName,
+                                Comment = " "
+                            };
+
+                            resultList.Add(subprogramActionKbkSimpleAction);
+                        }
+                        if (resultList.Any())
+                        {
+                            contractService.SaveSubprogramActionKbkSimpleActions(resultList);
+                            return Json(new { info = message });
+                        }
+                        else
+                        {
+                            return Json(new { info = "Выбранные продукты контрактов уже добалены в форму или не удовлетворяют условиям формы" });
+                        }
+                    }
+                    else
+                    {
+                        return Json(new { info = "Продукты контракта не выбраны" });
+                    }
+                }
+                return new StatusCodeResult(400);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception(ex.Message);
+            }
+
+        }
+    }
+
+}
+
+
